@@ -1,0 +1,10 @@
+node_modules
+dist
+.env
+.env.local
+.env.*.local
+.sanity
+.vercel
+.netlify
+*.tsbuildinfo
+node_modules/.tmp
