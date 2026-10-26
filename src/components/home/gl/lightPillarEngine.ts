@@ -223,6 +223,19 @@ void main() {
 const INTRO_SECONDS = 2.1
 const PULSE_LIFE = 1.4
 const MIN_SCALE = 0.25
+const FRAME_GAP = 1000 / 30
+const BITMAP_BUDGET = 360_000
+const FIELD_BUDGET = 140_000
+
+const fit = (width: number, height: number, budget: number) => {
+  const pixels = Math.max(1, width * height)
+  if (pixels <= budget) return { width: Math.max(1, Math.round(width)), height: Math.max(1, Math.round(height)) }
+  const factor = Math.sqrt(budget / pixels)
+  return {
+    width: Math.max(1, Math.round(width * factor)),
+    height: Math.max(1, Math.round(height * factor)),
+  }
+}
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
 const easeOut = (t: number) => 1 - (1 - t) ** 3
@@ -286,7 +299,8 @@ export function startLightEngine(init: LightInit) {
     antialias: false,
     depth: false,
     stencil: false,
-    powerPreference: 'high-performance',
+    powerPreference: 'low-power',
+    desynchronized: true,
   })
   if (!gl) return noop()
 
@@ -365,9 +379,8 @@ export function startLightEngine(init: LightInit) {
 
   const render = () => {
     const scale = Math.max(MIN_SCALE, settings.scale * state.governor)
-    const fieldWidth = Math.max(1, Math.round(view.width * scale))
-    const fieldHeight = Math.max(1, Math.round(view.height * scale))
-    sizeTarget(fieldWidth, fieldHeight)
+    const field = fit(view.width * scale, view.height * scale, FIELD_BUDGET)
+    sizeTarget(field.width, field.height)
 
     const grow = ease(state.intro)
     const rise = easeOut(state.intro)
@@ -430,7 +443,7 @@ export function startLightEngine(init: LightInit) {
   }
 
   const tune = (dt: number) => {
-    if (dt > 1 / 40) {
+    if (dt > 1 / 20) {
       state.slow += 1
       state.quick = 0
     } else if (dt < 1 / 55) {
@@ -449,6 +462,10 @@ export function startLightEngine(init: LightInit) {
   const frame = (now: number) => {
     raf = 0
     if (!alive || !visible || pageHidden) return
+    if (last && now - last < FRAME_GAP) {
+      raf = requestFrame(frame)
+      return
+    }
     const dt = last ? Math.min(0.05, (now - last) / 1000) : 1 / 60
     if (last) tune((now - last) / 1000)
     last = now
@@ -487,8 +504,9 @@ export function startLightEngine(init: LightInit) {
   }
 
   const applySize = () => {
-    canvas.width = Math.max(1, Math.round(view.width * Math.min(view.ratio, 2)))
-    canvas.height = Math.max(1, Math.round(view.height * Math.min(view.ratio, 2)))
+    const bitmap = fit(view.width, view.height, BITMAP_BUDGET)
+    canvas.width = bitmap.width
+    canvas.height = bitmap.height
     if (!visible) return
     if (!raf) render()
     wake()

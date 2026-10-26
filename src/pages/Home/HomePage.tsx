@@ -65,7 +65,7 @@ export function HomePage() {
     <>
       <Seo title={title} description={site.description} path="/" image={imageUrl(site.settings?.ogImage || page?.heroImages?.[0], 1200) || undefined} jsonLd={jsonLd} />
       <div className="relative">
-        <div className="pointer-events-none absolute inset-0 z-0 overflow-visible" aria-hidden>
+        <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden [contain:paint]" aria-hidden>
           <LightPillar
             topColor="#FFF3C4"
             bottomColor="#F8E7A0"
@@ -80,14 +80,14 @@ export function HomePage() {
             interactive
             clickPulse
             intro
-            quality="high"
+            quality="medium"
             lightMode
             mixBlendMode="normal"
             className="pointer-events-none"
           />
         </div>
-      <section ref={heroRef} className="relative z-10 overflow-hidden pt-28 md:pt-32">
-        <Container>
+      <section ref={heroRef} className="relative z-10 isolate overflow-hidden pt-28 md:pt-32">
+        <Container className="relative z-10">
           <Reveal>
           <div className="grid items-center gap-8 lg:grid-cols-2 lg:gap-6">
             <motion.div style={{ x: heroMotion.textX, y: heroMotion.textY }}>
