@@ -102,38 +102,72 @@ export function bindGlSurface(container: HTMLElement, post: (event: SurfaceEvent
   }
 }
 
-export function launchGlThread<T extends { type: string }>(
-  url: URL,
+const isReadyMessage = (data: unknown) =>
+  typeof data === 'object' && data !== null && 'type' in data && data.type === 'ready'
+
+export function attachGlWorker<T extends { type: string }>(
+  worker: Worker,
   canvas: HTMLCanvasElement,
   init: object,
-  name: string,
   fallback: (canvas: HTMLCanvasElement) => ThreadHandle<T>,
   onWorkerMessage?: (data: unknown) => void,
 ): ThreadHandle<T> {
-  if (typeof Worker === 'undefined' || typeof canvas.transferControlToOffscreen !== 'function') {
-    return fallback(canvas)
+  let mode: 'pending' | 'worker' | 'fallback' = 'pending'
+  let disposed = false
+  let fallbackHandle: ThreadHandle<T> | null = null
+  const queued: T[] = []
+
+  const flush = (post: (message: T) => void) => {
+    for (const message of queued) post(message)
+    queued.length = 0
   }
 
-  let worker: Worker
-  try {
-    worker = new Worker(url, { type: 'module', name })
-  } catch {
-    return fallback(canvas)
-  }
-
-  try {
-    const offscreen = canvas.transferControlToOffscreen()
-    worker.postMessage({ type: 'init', canvas: offscreen, ...init }, [offscreen])
-    if (onWorkerMessage) {
-      worker.onmessage = (event: MessageEvent<unknown>) => onWorkerMessage(event.data)
-    }
-  } catch {
+  const useFallback = (node: HTMLCanvasElement) => {
+    if (disposed || mode === 'fallback') return
+    mode = 'fallback'
     worker.terminate()
-    return fallback(canvas)
+    fallbackHandle = fallback(node)
+    flush(fallbackHandle.post)
   }
+
+  worker.onerror = () => {
+    if (mode === 'pending') useFallback(canvas)
+  }
+
+  worker.onmessage = (event: MessageEvent<unknown>) => {
+    if (mode === 'pending' && isReadyMessage(event.data)) {
+      try {
+        const offscreen = canvas.transferControlToOffscreen()
+        worker.postMessage({ type: 'init', canvas: offscreen, ...init }, [offscreen])
+        mode = 'worker'
+        flush((message) => worker.postMessage(message))
+      } catch {
+        const replacement = document.createElement('canvas')
+        replacement.className = canvas.className
+        replacement.setAttribute('aria-hidden', 'true')
+        canvas.replaceWith(replacement)
+        useFallback(replacement)
+      }
+      return
+    }
+    if (mode === 'worker') onWorkerMessage?.(event.data)
+  }
+
+  const timeout = window.setTimeout(() => {
+    if (mode === 'pending') useFallback(canvas)
+  }, 8000)
 
   return {
-    post: (message) => worker.postMessage(message),
-    dispose: () => worker.terminate(),
+    post: (message) => {
+      if (mode === 'worker') worker.postMessage(message)
+      else if (mode === 'fallback') fallbackHandle?.post(message)
+      else queued.push(message)
+    },
+    dispose: () => {
+      disposed = true
+      window.clearTimeout(timeout)
+      if (mode === 'fallback') fallbackHandle?.dispose()
+      else worker.terminate()
+    },
   }
 }

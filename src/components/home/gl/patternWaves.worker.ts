@@ -1,5 +1,7 @@
 import { startPatternEngine, type PatternCommand, type PatternInit } from './patternEngine'
 
+self.postMessage({ type: 'ready' })
+
 interface InitMessage extends PatternInit {
   type: 'init'
 }

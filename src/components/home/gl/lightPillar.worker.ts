@@ -1,5 +1,7 @@
 import { startLightEngine, type LightCommand, type LightInit } from './lightPillarEngine'
 
+self.postMessage({ type: 'ready' })
+
 interface InitMessage extends LightInit {
   type: 'init'
 }

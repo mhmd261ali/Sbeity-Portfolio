@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { parseRgb } from '@/components/home/gl/color'
 import { startLightEngine, type LightCommand, type LightSettings } from '@/components/home/gl/lightPillarEngine'
-import { bindGlSurface, launchGlThread, readSurfaceSize } from '@/components/home/gl/surface'
+import { attachGlWorker, bindGlSurface, readSurfaceSize, type ThreadHandle } from '@/components/home/gl/surface'
 
 export interface LightPillarProps {
   topColor?: string
@@ -136,23 +136,26 @@ const LightPillar = ({
       settings: settingsRef.current,
     }
     const recover = () => setGeneration((value) => value + 1)
-    const thread = launchGlThread(
-      new URL('./gl/lightPillar.worker.ts', import.meta.url),
-      canvas,
-      snapshot,
-      'light-pillar',
-      (node) => startLightEngine({ ...snapshot, canvas: node, onContextLost: recover }),
-      (data) => {
+    const runHere = (node: HTMLCanvasElement) => startLightEngine({ ...snapshot, canvas: node, onContextLost: recover })
+    let thread: ThreadHandle<LightCommand>
+    if (typeof canvas.transferControlToOffscreen !== 'function') {
+      thread = runHere(canvas)
+    } else {
+      const worker = new Worker(new URL('./gl/lightPillar.worker.ts', import.meta.url), {
+        type: 'module',
+        name: 'light-pillar',
+      })
+      thread = attachGlWorker(worker, canvas, snapshot, runHere, (data) => {
         if (typeof data === 'object' && data !== null && 'type' in data && data.type === 'contextlost') recover()
-      },
-    )
+      })
+    }
     postRef.current = thread.post
     const unbind = bindGlSurface(container, thread.post)
     return () => {
       postRef.current = null
       unbind()
       thread.dispose()
-      canvas.remove()
+      container.replaceChildren()
     }
   }, [generation])
 

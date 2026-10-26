@@ -9,7 +9,7 @@ import {
   type PatternSettings,
   type WaveKind,
 } from '@/components/home/gl/patternEngine'
-import { bindGlSurface, launchGlThread, readSurfaceSize } from '@/components/home/gl/surface'
+import { attachGlWorker, bindGlSurface, readSurfaceSize, type ThreadHandle } from '@/components/home/gl/surface'
 
 type SurfacePreset = 'silk' | 'ocean' | 'pond' | 'lines' | 'terminal' | 'mesh'
 
@@ -231,20 +231,24 @@ const PatternWaves = ({
       hidden: document.hidden,
       settings: settingsRef.current,
     }
-    const thread = launchGlThread(
-      new URL('./gl/patternWaves.worker.ts', import.meta.url),
-      canvas,
-      snapshot,
-      'pattern-waves',
-      (node) => startPatternEngine({ ...snapshot, canvas: node }),
-    )
+    const runHere = (node: HTMLCanvasElement) => startPatternEngine({ ...snapshot, canvas: node })
+    let thread: ThreadHandle<PatternCommand>
+    if (typeof canvas.transferControlToOffscreen !== 'function') {
+      thread = runHere(canvas)
+    } else {
+      const worker = new Worker(new URL('./gl/patternWaves.worker.ts', import.meta.url), {
+        type: 'module',
+        name: 'pattern-waves',
+      })
+      thread = attachGlWorker(worker, canvas, snapshot, runHere)
+    }
     postRef.current = thread.post
     const unbind = bindGlSurface(container, thread.post)
     return () => {
       postRef.current = null
       unbind()
       thread.dispose()
-      canvas.remove()
+      container.replaceChildren()
     }
   }, [])
 
